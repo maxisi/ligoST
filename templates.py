@@ -581,7 +581,7 @@ class Signal(object):
     of polarization and inclination angles.
     '''
 
-    def __init__(self, detector, psr, kind, pdif, t, isloaded=False):
+    def __init__(self, detector, psr, t, pdif='p', pdif_s='p', kind='GRs', isloaded=False):
         
         self.log = logging.getLogger('Signal')
     
@@ -597,12 +597,13 @@ class Signal(object):
         self.kind = kind            # kind of signal
         self.basis = sd.aps[kind]   # polarizations composing signal
         self.pdif = sd.phase(pdif)  # phase difference between components
+        self.pdif = sd.phase(pdif_s)# phase difference between scalar part
         
         # get antenna patterns
         self.response = Response(psr, detector, t, kind, loadvectors=True)
         
     
-    def signalinfo(self, pdif, iota=[], p=0):
+    def signalinfo(self, iota=[], p=0):
         
         self.log.debug('Producing amplitudes and phase differences.')
         
@@ -618,39 +619,38 @@ class Signal(object):
         info = pd.DataFrame(index=self.basis, columns=['h', 'p'])      
 
         self.log.debug('Setting amplitudes and phases for ' + self.kind)
-        if self.kind == 'GR':
-            info['h']['pl'] = (1. + np.cos(iota)**2)/2.
-            info['h']['cr'] = np.cos(iota)
-            
-            info['p']['pl'] = p
-            info['p']['cr'] = p + pdif
-            
-        elif self.kind == 'G4v':
-            info['h']['xz'] = np.sin(iota)
-            info['h']['yz'] = np.sin(iota) * math.cos(iota)
-            
-            info['p']['xz'] = p
-            info['p']['yz'] = p + pdif
-            
-        elif self.kind == 'AP':
-            for k in sd.names:
-                info['h'][k] = 1.
-                info['p'][k] = p
-            
-
-#         elif self.kind == 'GRs':
-#             self.log.debug('GRs')
+#         if self.kind == 'GR':
 #             info['h']['pl'] = (1. + np.cos(iota)**2)/2.
 #             info['h']['cr'] = np.cos(iota)
-#             info['h']['br'] = h_s
-# 
+#             
 #             info['p']['pl'] = p
 #             info['p']['cr'] = p + pdif
-#             info['p']['br'] = p + pdif_s
+#             
+#         elif self.kind == 'G4v':
+#             info['h']['xz'] = np.sin(iota)
+#             info['h']['yz'] = np.sin(iota) * math.cos(iota)
+#             
+#             info['p']['xz'] = p
+#             info['p']['yz'] = p + pdif
+#             
+#         elif self.kind == 'AP':
+#             for k in sd.names:
+#                 info['h'][k] = 1.
+#                 info['p'][k] = p
+#             
+# 
+#         elif self.kind == 'GRs':
+        info['h']['pl'] = (1. + np.cos(iota)**2)/2.
+        info['h']['cr'] = np.cos(iota)
+        info['h']['br'] = h_s
+
+        info['p']['pl'] = p
+        info['p']['cr'] = p + self.pdif
+        info['p']['br'] = p + self.pdif_s
             
-        else:
-            self.log.error('%s is not a recognized template (temp 647)' % self.kind)
-            exit()
+#         else:
+#             self.log.error('%s is not a recognized template (temp 651)' % self.kind)
+#             exit()
             
         return info
         
@@ -679,7 +679,7 @@ class Signal(object):
             response_local.create(psi=pol_angle, savefile=False)
             
             self.log.debug('Getting amplitude info.')
-            info = self.signalinfo(0, iota=incl_angle)
+            info = self.signalinfo(iota=incl_angle)
             
             self.log.debug('Constructing matrix.')
             dmDict = {pol: getattr(response_local, pol) * info['h'][pol] / 2. for pol in self.basis}
@@ -690,7 +690,7 @@ class Signal(object):
             
     def simulate(self, pol_angle, incl_angle, phase=0):
         '''
-        Simulates a signal based given polarization and inclination angles.
+        Simulates a signal based on given polarization and inclination angles.
         Warning: Does not scale output signal, need to multiply output by h0.
         '''
         
@@ -703,7 +703,7 @@ class Signal(object):
             dm = self.design_matrix(pol_angle, incl_angle)
 
             # get phase info
-            info = self.signalinfo(self.pdif, iota=1., p=phase)
+            info = self.signalinfo(iota=1., p=phase)
             
             self.log.debug('Constructing signal.')
             # raise phases to exponent (apply),

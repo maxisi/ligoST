@@ -505,16 +505,16 @@ class Frequentist(object):
         filesize    (number of instantiations per background file, default 100)      [OPT]
     '''
     
-    def __init__(self, detector, psr, nfreq, injkind, pdif, ninj, rangeparam=[], frange=[1.0e-7, 1.0e-5], hinjrange=[1.0E-27, 1.0E-23], filesize=100):
+    def __init__(self, nh0, nhs, detector='H1', psr='J0534+2200', pdif='p', pdif_s='p', frange=[1.0e-7, 1.0e-5], hinjrange=[1.0E-27, 1.0E-23], range=[], filesize=100):
         # system info
         self.detector = detector
         self.psr = psr
         
         self.log = logging.getLogger('Frequentist')
-        self.log.debug('Initializing frequentist sensitivity analysis.')
+        self.log.debug('Initializing frequentist ST sensitivity analysis.')
                 
         # data info
-        self.freq = np.linspace(frange[0], frange[1], nfreq)
+        self.freq = np.linspace(frange[0], frange[1], nh0)
 
         self.background = Background(detector, psr, self.freq, filesize)
         self.background.get()
@@ -526,19 +526,16 @@ class Frequentist(object):
         sigma = Sigma(self.detector, self.psr, self.background.seed.finehet)
         self.sg = sigma.std
         
-        self.log.debug('Preparing injection strengths.')
+        self.log.debug('Preparing injections.')
         inj = np.linspace(hinjrange[0], hinjrange[1], ninj)
-        injLocations = [int(x) for x in np.linspace(0, nfreq, ninj, endpoint=False)]
-        self.hinj = np.zeros(nfreq)
-        self.hinj[injLocations] = inj 
-               
-        self.pdif = pdif
-        self.injkind = injkind
-        self.injection = templates.Signal(detector, psr, injkind, pdif, self.t)
         
-        src = self.injection.response.src
-
+        self.pdif = pdif
+        self.pdif_s = pdif_s
+        self.injkind = 'GRs'
+        self.injection = templates.Signal(detector, psr, self.t, pdif=pdif, pdif_s=pdif_s, kind=injkind,)
+        
         self.log.debug('Preparing parameter ranges.')
+        src = self.injection.response.src
         if 'psi' in rangeparam or rangeparam=='all':
             self.pol_range = [
                             src.param['POL'] - src.param['POL error'],
@@ -561,14 +558,14 @@ class Frequentist(object):
             self.phi0_range = [0., 0.]
         
 
-    def analyze(self, methods):
+    def analyze(self, methods=['GRs']):
 
         self.log.info('Analyzing %d files.' % self.background.nsets)
     
-        self.log.debug('Producing search templates.')
+        self.log.debug('Producing search template.')
         search = {m: templates.Signal(self.detector, self.psr, m, 0, self.t) for m in methods}
 
-        self.log.debug('Setting up results')
+        self.log.debug('Setting up results') # NEEDS CORRECTION!
         self.results = Results(self.detector, self.psr, methods=methods, hinj=self.hinj, kind=self.injkind, pdif=self.pdif)
             
         self.log.debug('Looping over files')
@@ -605,10 +602,8 @@ class Frequentist(object):
                     
                     # inject if necessary
                     h = self.hinj[inst_number]
-                    if h != 0:
-                        self.log.debug(self.injection.kind + str(self.injection.pdif))
-                        self.log.debug('I! %(psi_inj)f %(iota_inj)f %(phi0)f' % locals())
-                        d += h * self.injection.simulate(psi_inj, iota_inj, phase=phi0)
+                    self.log.debug('I! %(psi_inj)f %(iota_inj)f %(phi0)f' % locals())
+                    d += h * self.injection.simulate(psi_inj, iota_inj, phase=phi0)
                     
                     self.log.debug('Get design matrix.')
                     designMatrix = search[m].design_matrix(psi, iota)
@@ -630,7 +625,7 @@ class Frequentist(object):
                     # need to make U complex before dotting with b
                     Utb = (U + 0j).mul(b, axis=0).sum(axis=0)
                     a = VtW.dot(Utb.T)          # results
-
+# NEEDS MODIFYICATION FROM HERE ON:
                     self.log.debug('Average h0')
                     self.results.h[m][inst_number] = (abs(a).sum()) / len(a)
                     
